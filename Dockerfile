@@ -1,3 +1,21 @@
+FROM rust:1.83-slim-bookworm AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Download and extract polydup source
+ARG POLYDUP_VERSION=v0.5.1
+RUN git clone --depth 1 --branch ${POLYDUP_VERSION} https://github.com/wiesnerbernard/polydup.git .
+
+# Build polydup CLI
+RUN cargo build --release -p polydup-cli
+
+# Runtime stage
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
@@ -8,9 +26,8 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Download pre-built polydup binary from GitHub releases
-RUN curl -L https://github.com/wiesnerbernard/polydup/releases/download/v0.5.0/polydup-linux-x86_64 -o /usr/local/bin/polydup \
-    && chmod +x /usr/local/bin/polydup
+# Copy binary from builder
+COPY --from=builder /app/target/release/polydup /usr/local/bin/polydup
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
