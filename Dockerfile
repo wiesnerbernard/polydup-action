@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Download and extract polydup source
-ARG POLYDUP_VERSION=v0.5.3
+ARG POLYDUP_VERSION=v0.5.4
 RUN git clone --depth 1 --branch ${POLYDUP_VERSION} https://github.com/wiesnerbernard/polydup.git .
 
 # Build polydup CLI
