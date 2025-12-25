@@ -1,13 +1,14 @@
-# Example workflow for testing locally
+# Example GitHub Actions workflow for using PolyDup Action
+# Copy this to .github/workflows/code-quality.yml in your repository
 
-name: Test PolyDup Action
+name: PolyDup Code Quality
 
 on:
   pull_request:
     branches: [ main, master ]
 
 jobs:
-  test-action:
+  duplicate-detection:
     runs-on: ubuntu-latest
     
     steps:
@@ -16,8 +17,8 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Run PolyDup (Local)
-        uses: ./
+      - name: Run PolyDup
+        uses: wiesnerbernard/polydup-action@v0.1.0
         with:
           threshold: 50
           similarity: 0.85
