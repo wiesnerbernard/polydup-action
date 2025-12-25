@@ -1,0 +1,65 @@
+name: 'PolyDup Code Duplicate Detector'
+description: 'Detect duplicate code across multiple languages in your Pull Requests'
+author: 'PolyDup Contributors'
+
+branding:
+  icon: 'copy'
+  color: 'purple'
+
+inputs:
+  threshold:
+    description: 'Minimum code block size in tokens (default: 50)'
+    required: false
+    default: '50'
+  
+  similarity:
+    description: 'Similarity threshold between 0.0 and 1.0 (default: 0.85)'
+    required: false
+    default: '0.85'
+  
+  fail-on-duplicates:
+    description: 'Fail the check if duplicates are found (default: true)'
+    required: false
+    default: 'true'
+  
+  format:
+    description: 'Output format: text or json (default: text)'
+    required: false
+    default: 'text'
+  
+  base-ref:
+    description: 'Base git reference for comparison (default: auto-detect from PR)'
+    required: false
+    default: ''
+  
+  github-token:
+    description: 'GitHub token for commenting on PRs (default: ${{ github.token }})'
+    required: false
+    default: ${{ github.token }}
+  
+  comment-on-pr:
+    description: 'Post results as PR comment (default: true)'
+    required: false
+    default: 'true'
+
+outputs:
+  duplicates-found:
+    description: 'Number of duplicate code blocks found'
+  
+  files-scanned:
+    description: 'Number of files scanned'
+  
+  exit-code:
+    description: 'Exit code from polydup scan (0 = no duplicates, 1 = duplicates found)'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.threshold }}
+    - ${{ inputs.similarity }}
+    - ${{ inputs.fail-on-duplicates }}
+    - ${{ inputs.format }}
+    - ${{ inputs.base-ref }}
+    - ${{ inputs.github-token }}
+    - ${{ inputs.comment-on-pr }}

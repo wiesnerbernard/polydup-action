@@ -1,0 +1,25 @@
+# Example workflow for testing locally
+
+name: Test PolyDup Action
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-action:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Run PolyDup (Local)
+        uses: ./
+        with:
+          threshold: 50
+          similarity: 0.85
+          fail-on-duplicates: false
+          comment-on-pr: true
