@@ -33,9 +33,9 @@ inputs:
     default: ''
   
   github-token:
-    description: 'GitHub token for commenting on PRs (default: ${{ github.token }})'
+    description: 'GitHub token for commenting on PRs'
     required: false
-    default: ${{ github.token }}
+    default: ''
   
   comment-on-pr:
     description: 'Post results as PR comment (default: true)'
