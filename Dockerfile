@@ -1,6 +1,6 @@
-FROM rust:1.75-slim
+FROM debian:bookworm-slim
 
-# Install dependencies
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install polydup-cli from crates.io
-RUN cargo install polydup-cli --version 0.5.0
+# Download pre-built polydup binary from GitHub releases
+RUN curl -L https://github.com/wiesnerbernard/polydup/releases/download/v0.5.0/polydup-linux-x86_64 -o /usr/local/bin/polydup \
+    && chmod +x /usr/local/bin/polydup
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
