@@ -1,4 +1,4 @@
-# PolyDup GitHub Action 🔍
+# PolyDup GitHub Action
 
 Automatically detect duplicate code across multiple languages in your Pull Requests.
 
@@ -7,12 +7,12 @@ Automatically detect duplicate code across multiple languages in your Pull Reque
 
 ## Features
 
-- 🚀 **10-100x faster** than traditional approaches using Git-Diff Mode
-- 🌍 **Multi-language support**: JavaScript, TypeScript, Python, Rust, and more
-- 🎯 **Smart detection**: Finds Type-1 (exact), Type-2 (renamed), and Type-3 (near-miss) clones
-- 💬 **PR comments**: Automatic feedback on pull requests
-- ⚙️ **Configurable**: Adjust thresholds and similarity levels
-- 🔒 **Secure**: No data leaves your repository
+- **10-100x faster** than traditional approaches using Git-Diff Mode
+- **Multi-language support**: JavaScript, TypeScript, Python, Rust, and more
+- **Smart detection**: Finds Type-1 (exact), Type-2 (renamed), and Type-3 (near-miss) clones
+- **PR comments**: Automatic feedback on pull requests
+- **Configurable**: Adjust thresholds and similarity levels
+- **Secure**: No data leaves your repository
 
 ## Quick Start
 
@@ -194,12 +194,12 @@ jobs:
 
 ## Supported Languages
 
-- ✅ JavaScript / TypeScript
-- ✅ Python
-- ✅ Rust
-- ✅ JSX / TSX
-- ✅ Vue (JavaScript/TypeScript sections)
-- ✅ Svelte (JavaScript/TypeScript sections)
+- JavaScript / TypeScript
+- Python
+- Rust
+- JSX / TSX
+- Vue (JavaScript/TypeScript sections)
+- Svelte (JavaScript/TypeScript sections)
 
 More languages coming soon!
 
@@ -295,9 +295,9 @@ at your option.
 
 ## Support
 
-- 📖 [Documentation](https://github.com/wiesnerbernard/polydup)
-- 🐛 [Report Issues](https://github.com/wiesnerbernard/polydup/issues)
-- 💬 [Discussions](https://github.com/wiesnerbernard/polydup/discussions)
+- [Documentation](https://github.com/wiesnerbernard/polydup)
+- [Report Issues](https://github.com/wiesnerbernard/polydup/issues)
+- [Discussions](https://github.com/wiesnerbernard/polydup/discussions)
 
 ---
 
