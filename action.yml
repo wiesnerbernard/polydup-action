@@ -54,7 +54,7 @@ outputs:
 
 runs:
   using: 'docker'
-  image: 'Dockerfile'
+  image: 'docker://ghcr.io/wiesnerbernard/polydup-action:latest'
   args:
     - ${{ inputs.threshold }}
     - ${{ inputs.similarity }}
