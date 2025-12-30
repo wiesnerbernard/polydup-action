@@ -122,14 +122,22 @@ $(cat "$OUTPUT_FILE" | head -100)
     
     # Post comment using GitHub API
     COMMENT_JSON=$(jq -n --arg body "$COMMENT_BODY" '{body: $body}')
-    
-    curl -s -X POST \
+
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
       -H "Authorization: token $GITHUB_TOKEN" \
       -H "Accept: application/vnd.github.v3+json" \
       "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-      -d "$COMMENT_JSON" > /dev/null
-    
-    echo "Comment posted successfully"
+      -d "$COMMENT_JSON")
+
+    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+    RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')
+
+    if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+      echo "Comment posted successfully"
+    else
+      echo "WARNING: Failed to post comment (HTTP $HTTP_CODE)"
+      echo "$RESPONSE_BODY" | jq -r '.message // .' 2>/dev/null || echo "$RESPONSE_BODY"
+    fi
   fi
 fi
 
