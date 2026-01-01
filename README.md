@@ -73,6 +73,7 @@ permissions:
 | `comment-on-pr` | Post results as PR comment | `true` | No |
 | `polydup-version` | Version of polydup to install | `latest` | No |
 | `working-directory` | Working directory for scanning | `.` | No |
+| `scan-mode` | Scan mode: `git-diff` (only changed files) or `full` (all files) | `git-diff` | No |
 
 ## Outputs
 

@@ -52,6 +52,11 @@ inputs:
     required: false
     default: '.'
 
+  scan-mode:
+    description: 'Scan mode: git-diff (only changed files) or full (all files)'
+    required: false
+    default: 'git-diff'
+
 outputs:
   duplicates-found:
     description: 'Number of duplicate code blocks found'
@@ -106,41 +111,50 @@ runs:
         INPUT_BASE_REF: ${{ inputs.base-ref }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
+        INPUT_SCAN_MODE: ${{ inputs.scan-mode }}
       run: |
         set +e
 
         echo "PolyDup Code Duplicate Detector"
         echo "================================"
 
-        # Detect base reference for git-diff
-        BASE_REF="${INPUT_BASE_REF}"
-        if [ -z "$BASE_REF" ]; then
-          if [ -n "$GITHUB_BASE_REF" ]; then
-            # Pull Request context
-            BASE_REF="origin/$GITHUB_BASE_REF"
-            echo "Detected PR context: comparing against $BASE_REF"
+        # Build git-diff arguments if in git-diff mode
+        GIT_DIFF_ARG=""
+        if [ "$INPUT_SCAN_MODE" == "git-diff" ]; then
+          # Detect base reference for git-diff
+          BASE_REF="${INPUT_BASE_REF}"
+          if [ -z "$BASE_REF" ]; then
+            if [ -n "$GITHUB_BASE_REF" ]; then
+              # Pull Request context
+              BASE_REF="origin/$GITHUB_BASE_REF"
+              echo "Detected PR context: comparing against $BASE_REF"
+            else
+              # Push context - compare against parent commit
+              BASE_REF="HEAD~1"
+              echo "Push context: comparing against $BASE_REF"
+            fi
           else
-            # Push context - compare against parent commit
-            BASE_REF="HEAD~1"
-            echo "Push context: comparing against $BASE_REF"
+            echo "Using provided base reference: $BASE_REF"
           fi
+
+          # Build git-diff range
+          if [ "$BASE_REF" == "HEAD~1" ]; then
+            GIT_RANGE="HEAD~1..HEAD"
+          else
+            # Fetch the base branch for comparison
+            if [ -n "$GITHUB_BASE_REF" ]; then
+              echo "Fetching base branch..."
+              git fetch origin "$GITHUB_BASE_REF" --depth=1 2>/dev/null || true
+            fi
+            GIT_RANGE="${BASE_REF}..HEAD"
+          fi
+
+          echo "Scanning files changed in: $GIT_RANGE"
+          GIT_DIFF_ARG="--git-diff $GIT_RANGE"
         else
-          echo "Using provided base reference: $BASE_REF"
+          echo "Full scan mode: scanning all files"
         fi
 
-        # Build git-diff range
-        if [ "$BASE_REF" == "HEAD~1" ]; then
-          GIT_RANGE="HEAD~1..HEAD"
-        else
-          # Fetch the base branch for comparison
-          if [ -n "$GITHUB_BASE_REF" ]; then
-            echo "Fetching base branch..."
-            git fetch origin "$GITHUB_BASE_REF" --depth=1 2>/dev/null || true
-          fi
-          GIT_RANGE="${BASE_REF}..HEAD"
-        fi
-
-        echo "Scanning files changed in: $GIT_RANGE"
         echo "   Threshold: $INPUT_THRESHOLD tokens"
         echo "   Similarity: $INPUT_SIMILARITY"
         echo ""
@@ -157,7 +171,7 @@ runs:
 
         # Run with text output for display
         polydup scan . \
-          --git-diff "$GIT_RANGE" \
+          $GIT_DIFF_ARG \
           --min-tokens "$INPUT_THRESHOLD" \
           --similarity "$INPUT_SIMILARITY" \
           --format text \
@@ -184,7 +198,7 @@ runs:
 
         # Get JSON for parsing (without fail flag to get clean results)
         polydup scan . \
-          --git-diff "$GIT_RANGE" \
+          $GIT_DIFF_ARG \
           --min-tokens "$INPUT_THRESHOLD" \
           --similarity "$INPUT_SIMILARITY" \
           --format json \
