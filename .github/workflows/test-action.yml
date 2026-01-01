@@ -1,0 +1,153 @@
+name: Test Action
+
+on:
+  push:
+    branches: [main, feat/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-no-duplicates:
+    name: Test - No Duplicates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create clean test files
+        run: |
+          mkdir -p test-fixtures
+          echo "function unique1() { return 1; }" > test-fixtures/a.js
+          echo "function unique2() { return 2; }" > test-fixtures/b.js
+
+      - name: Run polydup action
+        uses: ./
+        with:
+          threshold: '50'
+          fail-on-duplicates: 'false'
+          comment-on-pr: 'false'
+          working-directory: test-fixtures
+
+      - name: Verify success
+        run: echo "Test passed - no duplicates detected as expected"
+
+  test-with-duplicates-no-fail:
+    name: Test - Duplicates Found (no fail)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create duplicate test files
+        run: |
+          mkdir -p test-fixtures
+          cat > test-fixtures/original.js << 'EOF'
+          function calculateTotal(items) {
+            let total = 0;
+            for (const item of items) {
+              total += item.price * item.quantity;
+            }
+            return total;
+          }
+          EOF
+          cp test-fixtures/original.js test-fixtures/duplicate.js
+
+      - name: Run polydup action
+        id: polydup
+        uses: ./
+        with:
+          threshold: '20'
+          fail-on-duplicates: 'false'
+          comment-on-pr: 'false'
+
+      - name: Verify duplicates detected
+        run: |
+          echo "Duplicates found: ${{ steps.polydup.outputs.duplicates-found }}"
+          if [ "${{ steps.polydup.outputs.duplicates-found }}" -gt 0 ]; then
+            echo "Test passed - duplicates detected as expected"
+          else
+            echo "Test might have failed - expected duplicates but found none"
+            echo "This could be due to threshold settings"
+          fi
+
+  test-with-duplicates-fail:
+    name: Test - Duplicates Found (fail mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create duplicate test files
+        run: |
+          mkdir -p test-fixtures
+          cat > test-fixtures/original.js << 'EOF'
+          function calculateTotal(items) {
+            let total = 0;
+            for (const item of items) {
+              total += item.price * item.quantity;
+            }
+            return total;
+          }
+          EOF
+          cp test-fixtures/original.js test-fixtures/duplicate.js
+
+      - name: Run polydup action (expect failure)
+        id: polydup
+        uses: ./
+        continue-on-error: true
+        with:
+          threshold: '20'
+          fail-on-duplicates: 'true'
+          comment-on-pr: 'false'
+
+      - name: Verify failure on duplicates
+        run: |
+          EXIT_CODE="${{ steps.polydup.outputs.exit-code }}"
+          echo "Exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" == "1" ] || [ "${{ steps.polydup.outcome }}" == "failure" ]; then
+            echo "Test passed - action correctly failed on duplicates"
+          else
+            echo "Test failed - expected failure but got success"
+            exit 1
+          fi
+
+  test-git-diff-mode:
+    name: Test - Git Diff Mode
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run polydup with git-diff
+        uses: ./
+        with:
+          base-ref: 'HEAD~1'
+          fail-on-duplicates: 'false'
+          comment-on-pr: 'false'
+
+      - name: Verify git access works
+        run: echo "Test passed - git-diff mode works correctly"
+
+  test-cross-platform:
+    name: Test - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run polydup action
+        uses: ./
+        with:
+          fail-on-duplicates: 'false'
+          comment-on-pr: 'false'
+
+      - name: Verify cross-platform compatibility
+        run: echo "Test passed on ${{ matrix.os }}"

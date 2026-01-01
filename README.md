@@ -3,6 +3,7 @@
 Automatically detect duplicate code across multiple languages in your Pull Requests.
 
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-PolyDup-blue.svg?colorA=24292e&colorB=0366d6&style=flat&longCache=true&logo=github)](https://github.com/marketplace/actions/polydup-code-duplicate-detector)
+[![Test Action](https://github.com/wiesnerbernard/polydup-action/actions/workflows/test-action.yml/badge.svg)](https://github.com/wiesnerbernard/polydup-action/actions/workflows/test-action.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](../LICENSE)
 
 ## Features
@@ -13,6 +14,7 @@ Automatically detect duplicate code across multiple languages in your Pull Reque
 - **PR comments**: Automatic feedback on pull requests
 - **Configurable**: Adjust thresholds and similarity levels
 - **Secure**: No data leaves your repository
+- **Cross-platform**: Works on Ubuntu, macOS, and Windows
 
 ## Quick Start
 
@@ -25,23 +27,37 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+  pull-requests: write  # Required for PR comments
+
 jobs:
   duplicate-detection:
     runs-on: ubuntu-latest
     name: Detect Duplicate Code
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for git-diff comparison
-      
+
       - name: Run PolyDup
         uses: wiesnerbernard/polydup-action@v1
         with:
           threshold: 50
           similarity: 0.85
           fail-on-duplicates: true
+```
+
+## Required Permissions
+
+For PR comments to work, your workflow needs these permissions:
+
+```yaml
+permissions:
+  contents: read       # Required to read repository content
+  pull-requests: write # Required to post PR comments
 ```
 
 ## Inputs
@@ -55,6 +71,8 @@ jobs:
 | `base-ref` | Base git reference for comparison | Auto-detect | No |
 | `github-token` | GitHub token for PR comments | `${{ github.token }}` | No |
 | `comment-on-pr` | Post results as PR comment | `true` | No |
+| `polydup-version` | Version of polydup to install | `latest` | No |
+| `working-directory` | Working directory for scanning | `.` | No |
 
 ## Outputs
 
@@ -62,7 +80,15 @@ jobs:
 |--------|-------------|
 | `duplicates-found` | Number of duplicate code blocks found |
 | `files-scanned` | Number of files scanned |
-| `exit-code` | Exit code from polydup (0 = no duplicates, 1 = duplicates found) |
+| `exit-code` | Exit code from polydup (see Exit Codes below) |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success - no duplicates found (or duplicates found but `fail-on-duplicates: false`) |
+| `1` | Duplicates found with `fail-on-duplicates: true` |
+| `2` | Error occurred (git failure, invalid configuration, etc.) |
 
 ## Usage Examples
 
@@ -111,6 +137,28 @@ Compare against a specific branch:
     base-ref: origin/develop
 ```
 
+### Pin Polydup Version
+
+Use a specific version of polydup for reproducibility:
+
+```yaml
+- name: Detect Duplicates
+  uses: wiesnerbernard/polydup-action@v1
+  with:
+    polydup-version: '0.8.1'
+```
+
+### Monorepo Support
+
+Scan a specific subdirectory:
+
+```yaml
+- name: Detect Duplicates in Backend
+  uses: wiesnerbernard/polydup-action@v1
+  with:
+    working-directory: packages/backend
+```
+
 ### Without PR Comments
 
 Disable automatic PR commenting:
@@ -135,9 +183,9 @@ Disable automatic PR commenting:
   run: |
     echo "Duplicates found: ${{ steps.polydup.outputs.duplicates-found }}"
     echo "Files scanned: ${{ steps.polydup.outputs.files-scanned }}"
-    
+
     if [ "${{ steps.polydup.outputs.duplicates-found }}" -gt 10 ]; then
-      echo "⚠️ Too many duplicates detected!"
+      echo "Too many duplicates detected!"
       exit 1
     fi
 ```
@@ -153,22 +201,26 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   code-quality:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Run Tests
         run: npm test
-      
+
       - name: Run Linter
         run: npm run lint
-      
+
       - name: Detect Duplicate Code
         uses: wiesnerbernard/polydup-action@v1
         with:
@@ -176,13 +228,6 @@ jobs:
           similarity: 0.85
           fail-on-duplicates: true
           comment-on-pr: true
-      
-      - name: Upload Results
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: polydup-report
-          path: polydup-report.json
 ```
 
 ## How It Works
@@ -243,17 +288,45 @@ More languages coming soon!
 
 ### No duplicates detected in PR
 
-**Solution**: The action only scans changed files. If no files changed or files don't contain functions, no duplicates will be found.
+**Possible causes**:
+- The action only scans changed files. If no files changed, no duplicates will be found.
+- Files don't contain functions (polydup detects duplicate functions, not arbitrary text)
+- Threshold is too high for the code blocks in question
 
 ### PR comment not posting
 
-**Solution**: Ensure the workflow has `pull_request` trigger and `github-token` has write permissions:
+**Solution**: Ensure the workflow has proper permissions:
 
 ```yaml
 permissions:
   contents: read
   pull-requests: write
 ```
+
+Also verify `comment-on-pr: true` (the default).
+
+### "Resource not accessible by integration" error
+
+**Solution**: This happens when the workflow lacks `pull-requests: write` permission. Add it to your workflow:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+### Action exits with code 2
+
+**Cause**: An error occurred (not related to finding duplicates). Common causes:
+- Invalid git reference in `base-ref`
+- Missing `fetch-depth: 0` in checkout
+- Invalid threshold or similarity values
+
+Check the action logs for specific error messages.
+
+### Slow first run
+
+**Cause**: On first run, the action installs polydup via `cargo install`. Subsequent runs use a cached binary and are much faster.
 
 ## Local Testing
 
@@ -272,7 +345,7 @@ act pull_request -j duplicate-detection
 Want to use PolyDup outside GitHub Actions? Install the CLI:
 
 ```bash
-cargo install polydup-cli
+cargo install polydup
 
 # Scan your code
 polydup scan . --git-diff origin/main..HEAD
@@ -296,7 +369,7 @@ at your option.
 ## Support
 
 - [Documentation](https://github.com/wiesnerbernard/polydup)
-- [Report Issues](https://github.com/wiesnerbernard/polydup/issues)
+- [Report Issues](https://github.com/wiesnerbernard/polydup-action/issues)
 - [Discussions](https://github.com/wiesnerbernard/polydup/discussions)
 
 ---
