@@ -11,55 +11,301 @@ inputs:
     description: 'Minimum code block size in tokens (default: 50)'
     required: false
     default: '50'
-  
+
   similarity:
     description: 'Similarity threshold between 0.0 and 1.0 (default: 0.85)'
     required: false
     default: '0.85'
-  
+
   fail-on-duplicates:
     description: 'Fail the check if duplicates are found (default: true)'
     required: false
     default: 'true'
-  
+
   format:
     description: 'Output format: text or json (default: text)'
     required: false
     default: 'text'
-  
+
   base-ref:
     description: 'Base git reference for comparison (default: auto-detect from PR)'
     required: false
     default: ''
-  
+
   github-token:
-    description: 'GitHub token for commenting on PRs'
+    description: 'GitHub token for commenting on PRs (default: github.token)'
     required: false
-    default: ''
-  
+    default: ${{ github.token }}
+
   comment-on-pr:
     description: 'Post results as PR comment (default: true)'
     required: false
     default: 'true'
 
+  polydup-version:
+    description: 'Version of polydup to install (default: latest)'
+    required: false
+    default: 'latest'
+
+  working-directory:
+    description: 'Working directory for scanning (default: .)'
+    required: false
+    default: '.'
+
+  scan-mode:
+    description: 'Scan mode: git-diff (only changed files) or full (all files)'
+    required: false
+    default: 'git-diff'
+
 outputs:
   duplicates-found:
     description: 'Number of duplicate code blocks found'
-  
+    value: ${{ steps.scan.outputs.duplicates-found }}
+
   files-scanned:
     description: 'Number of files scanned'
-  
+    value: ${{ steps.scan.outputs.files-scanned }}
+
   exit-code:
-    description: 'Exit code from polydup scan (0 = no duplicates, 1 = duplicates found)'
+    description: 'Exit code from polydup scan (0 = no duplicates, 1 = duplicates found, 2 = error)'
+    value: ${{ steps.scan.outputs.exit-code }}
 
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  args:
-    - ${{ inputs.threshold }}
-    - ${{ inputs.similarity }}
-    - ${{ inputs.fail-on-duplicates }}
-    - ${{ inputs.format }}
-    - ${{ inputs.base-ref }}
-    - ${{ inputs.github-token }}
-    - ${{ inputs.comment-on-pr }}
+  using: 'composite'
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache polydup binary
+      id: cache-polydup
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/polydup
+        key: ${{ runner.os }}-polydup-${{ inputs.polydup-version }}
+
+    - name: Install polydup
+      if: steps.cache-polydup.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "Installing polydup..."
+        if [ "${{ inputs.polydup-version }}" == "latest" ]; then
+          cargo install polydup
+        else
+          cargo install polydup --version "${{ inputs.polydup-version }}"
+        fi
+
+    - name: Verify installation
+      shell: bash
+      run: |
+        polydup --version
+
+    - name: Run polydup scan
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_THRESHOLD: ${{ inputs.threshold }}
+        INPUT_SIMILARITY: ${{ inputs.similarity }}
+        INPUT_FAIL_ON_DUPLICATES: ${{ inputs.fail-on-duplicates }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_BASE_REF: ${{ inputs.base-ref }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
+        INPUT_SCAN_MODE: ${{ inputs.scan-mode }}
+      run: |
+        set +e
+
+        echo "PolyDup Code Duplicate Detector"
+        echo "================================"
+
+        # Build git-diff arguments if in git-diff mode
+        GIT_DIFF_ARG=""
+        if [ "$INPUT_SCAN_MODE" == "git-diff" ]; then
+          # Detect base reference for git-diff
+          BASE_REF="${INPUT_BASE_REF}"
+          if [ -z "$BASE_REF" ]; then
+            if [ -n "$GITHUB_BASE_REF" ]; then
+              # Pull Request context
+              BASE_REF="origin/$GITHUB_BASE_REF"
+              echo "Detected PR context: comparing against $BASE_REF"
+            else
+              # Push context - compare against parent commit
+              BASE_REF="HEAD~1"
+              echo "Push context: comparing against $BASE_REF"
+            fi
+          else
+            echo "Using provided base reference: $BASE_REF"
+          fi
+
+          # Build git-diff range
+          if [ "$BASE_REF" == "HEAD~1" ]; then
+            GIT_RANGE="HEAD~1..HEAD"
+          else
+            # Fetch the base branch for comparison
+            if [ -n "$GITHUB_BASE_REF" ]; then
+              echo "Fetching base branch..."
+              git fetch origin "$GITHUB_BASE_REF" --depth=1 2>/dev/null || true
+            fi
+            GIT_RANGE="${BASE_REF}..HEAD"
+          fi
+
+          echo "Scanning files changed in: $GIT_RANGE"
+          GIT_DIFF_ARG="--git-diff $GIT_RANGE"
+        else
+          echo "Full scan mode: scanning all files"
+        fi
+
+        echo "   Threshold: $INPUT_THRESHOLD tokens"
+        echo "   Similarity: $INPUT_SIMILARITY"
+        echo ""
+
+        # Create temp files for output
+        OUTPUT_FILE=$(mktemp)
+        JSON_FILE=$(mktemp)
+
+        # Build command arguments
+        FAIL_FLAG=""
+        if [ "$INPUT_FAIL_ON_DUPLICATES" == "true" ]; then
+          FAIL_FLAG="--fail-on-duplicates"
+        fi
+
+        # Run with text output for display
+        polydup scan . \
+          $GIT_DIFF_ARG \
+          --min-tokens "$INPUT_THRESHOLD" \
+          --similarity "$INPUT_SIMILARITY" \
+          --format text \
+          $FAIL_FLAG \
+          > "$OUTPUT_FILE" 2>&1
+        POLYDUP_EXIT_CODE=$?
+
+        # Display results
+        cat "$OUTPUT_FILE"
+
+        # Handle exit codes:
+        # 0 = success (no duplicates, or duplicates without --fail-on-duplicates)
+        # 1 = duplicates found (with --fail-on-duplicates)
+        # 2 = error (git failure, invalid path, etc.)
+
+        if [ $POLYDUP_EXIT_CODE -eq 2 ]; then
+          echo ""
+          echo "ERROR: Scan failed with error (exit code 2)"
+          echo "exit-code=2" >> "$GITHUB_OUTPUT"
+          echo "duplicates-found=0" >> "$GITHUB_OUTPUT"
+          echo "files-scanned=0" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+        # Get JSON for parsing (without fail flag to get clean results)
+        polydup scan . \
+          $GIT_DIFF_ARG \
+          --min-tokens "$INPUT_THRESHOLD" \
+          --similarity "$INPUT_SIMILARITY" \
+          --format json \
+          > "$JSON_FILE" 2>/dev/null || echo '{"files_scanned":0,"duplicates":[]}' > "$JSON_FILE"
+
+        # Parse JSON results
+        DUPLICATES_FOUND=$(jq -r '.duplicates | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        FILES_SCANNED=$(jq -r '.files_scanned' "$JSON_FILE" 2>/dev/null || echo "0")
+
+        # Set GitHub Action outputs
+        echo "duplicates-found=$DUPLICATES_FOUND" >> "$GITHUB_OUTPUT"
+        echo "files-scanned=$FILES_SCANNED" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$POLYDUP_EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+        # Save output for PR comment step
+        echo "OUTPUT_FILE=$OUTPUT_FILE" >> "$GITHUB_ENV"
+        echo "DUPLICATES_FOUND=$DUPLICATES_FOUND" >> "$GITHUB_ENV"
+        echo "FILES_SCANNED=$FILES_SCANNED" >> "$GITHUB_ENV"
+        echo "GIT_RANGE=$GIT_RANGE" >> "$GITHUB_ENV"
+
+        # Exit with appropriate code
+        if [ $POLYDUP_EXIT_CODE -eq 1 ]; then
+          echo ""
+          echo "Check failed: duplicates found (fail-on-duplicates=true)"
+          exit 1
+        fi
+
+        echo ""
+        echo "Check completed successfully"
+
+    - name: Post PR comment
+      if: always() && inputs.comment-on-pr == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+
+        if [ -z "$PR_NUMBER" ]; then
+          echo "No PR number found, skipping comment"
+          exit 0
+        fi
+
+        echo "Posting results to PR #$PR_NUMBER..."
+
+        # Build comment body
+        if [ "${DUPLICATES_FOUND:-0}" -eq 0 ]; then
+          COMMENT_BODY="## PolyDup Duplicate Code Report
+
+        **No duplicate code detected!**
+
+        - Files scanned: ${FILES_SCANNED:-0}
+        - Threshold: ${{ inputs.threshold }} tokens
+        - Similarity: ${{ inputs.similarity }}
+
+        Great work keeping the codebase clean!"
+        else
+          # Get output content (limit to 100 lines)
+          OUTPUT_CONTENT=""
+          if [ -n "$OUTPUT_FILE" ] && [ -f "$OUTPUT_FILE" ]; then
+            OUTPUT_CONTENT=$(head -100 "$OUTPUT_FILE")
+          fi
+
+          COMMENT_BODY="## PolyDup Duplicate Code Report
+
+        **Found ${DUPLICATES_FOUND} duplicate code block(s)**
+
+        - Files scanned: ${FILES_SCANNED:-0}
+        - Threshold: ${{ inputs.threshold }} tokens
+        - Similarity: ${{ inputs.similarity }}
+
+        <details>
+        <summary>View Details</summary>
+
+        \`\`\`
+        ${OUTPUT_CONTENT}
+        \`\`\`
+
+        </details>
+
+        **Tip**: Consider refactoring duplicated code to improve maintainability."
+        fi
+
+        # Post comment using GitHub API
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+          -d "$(jq -n --arg body "$COMMENT_BODY" '{body: $body}')")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')
+
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          COMMENT_ID=$(echo "$RESPONSE_BODY" | jq -r '.id // empty')
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Comment posted: https://github.com/${{ github.repository }}/pull/$PR_NUMBER#issuecomment-$COMMENT_ID"
+          else
+            echo "Comment posted successfully"
+          fi
+        else
+          echo "WARNING: Failed to post comment (HTTP $HTTP_CODE)"
+          ERROR_MSG=$(echo "$RESPONSE_BODY" | jq -r '.message // "Unknown error"' 2>/dev/null || echo "Unknown error")
+          echo "Error: $ERROR_MSG"
+          echo ""
+          echo "Hint: Ensure the workflow has 'pull-requests: write' permission"
+          echo "Add to your workflow:"
+          echo "  permissions:"
+          echo "    pull-requests: write"
+        fi
