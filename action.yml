@@ -53,7 +53,7 @@ inputs:
     default: '.'
 
   scan-mode:
-    description: 'Scan mode: git-diff (only changed files) or full (all files)'
+    description: 'Scan mode: git-diff (changed files with cached hash lookup) or full (all files)'
     required: false
     default: 'git-diff'
 
@@ -98,6 +98,25 @@ runs:
       shell: bash
       run: |
         polydup --version
+
+    - name: Restore polydup hash cache
+      if: inputs.scan-mode == 'git-diff'
+      id: cache-polydup-hash
+      uses: actions/cache@v4
+      with:
+        path: .polydup-cache.json
+        key: ${{ runner.os }}-polydup-hash-${{ github.repository }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-polydup-hash-${{ github.repository }}-
+
+    - name: Build hash cache
+      if: inputs.scan-mode == 'git-diff' && steps.cache-polydup-hash.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Building hash cache for faster duplicate detection..."
+        polydup cache build -v
+        echo "Cache built successfully"
 
     - name: Run polydup scan
       id: scan
